@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-corp: #4f8cff;
+  --color-corp-dark: #3a6fd8;
+  --color-corp-light: rgba(79, 140, 255, 0.3);
+  --color-corp-glow: rgba(79, 140, 255, 0.15);
+  --color-neon: #06b6d4;
+  --color-gold: #c9a84c;
+  --color-navy-deep: #0a1628;
+  --color-navy: #0f2040;
+  --color-navy-light: #1a2d52;
+
+  --animate-fadeIn: fadeIn 0.6s ease-out;
+  --animate-fadeInUp: fadeInUp 0.6s ease-out;
+  --animate-fadeInDown: fadeInDown 0.6s ease-out;
+  --animate-shake: shake 0.4s ease-in-out;
+  --animate-slowZoom: slowZoom 20s ease-in-out infinite;
+  --animate-glowPulse: glowPulse 2s ease-in-out infinite;
+  --animate-neonFlicker: neonFlicker 3s ease-in-out infinite;
+  --animate-slideRight: slideRight 0.3s ease-out;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+
+  @keyframes slowZoom {
+    0%, 100% { transform: scale(1.05); }
+    50% { transform: scale(1.1); }
+  }
+
+  @keyframes glowPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(79, 140, 255, 0.1); }
+    50% { box-shadow: 0 0 20px rgba(79, 140, 255, 0.25); }
+  }
+
+  @keyframes neonFlicker {
+    0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+    20%, 24%, 55% { opacity: 0.6; }
+  }
+
+  @keyframes slideRight {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+}
+
+html {
+  background-color: #0a1628;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79, 140, 255, 0.15) transparent;
+}
