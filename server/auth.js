@@ -37,7 +37,7 @@ export function extraerToken(req) {
 }
 
 export async function enBlacklist(token) {
-  return !!(await queryOne('SELECT id FROM token_blacklist WHERE token = $1 LIMIT 1', [token]))
+  return !!(await queryOne('SELECT id FROM token_blacklist WHERE token = $1 FETCH FIRST 1 ROWS ONLY', [token]))
 }
 
 // Rutas accesibles sin token (igual que los permitAll de los SecurityConfig).

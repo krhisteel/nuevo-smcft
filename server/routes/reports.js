@@ -11,7 +11,7 @@ export const reportDetailsRouter = Router()
 
 reportDetailsRouter.get('/', h(() => query('SELECT * FROM report_details ORDER BY id ASC')))
 reportDetailsRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM report_details WHERE descripcion ILIKE $1 ORDER BY id', [`%${req.query.descripcion || req.query.texto || ''}%`])))
+  query('SELECT * FROM report_details WHERE UPPER(descripcion) LIKE UPPER($1) ORDER BY id', [`%${req.query.descripcion || req.query.texto || ''}%`])))
 filterRoutes(reportDetailsRouter, 'report_details', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/reporte/:reportId': { where: 'report_id = $1' },
@@ -48,7 +48,7 @@ const router = Router()
 
 router.get('/', h(() => query('SELECT * FROM reports ORDER BY id ASC')))
 router.get('/buscar', h((req) =>
-  query('SELECT * FROM reports WHERE titulo ILIKE $1 ORDER BY id', [`%${req.query.texto || ''}%`])))
+  query('SELECT * FROM reports WHERE UPPER(titulo) LIKE UPPER($1) ORDER BY id', [`%${req.query.texto || ''}%`])))
 filterRoutes(router, 'reports', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/tipo/:tipoReporte': { where: 'tipo_reporte = $1' },
@@ -79,7 +79,7 @@ router.post('/', h(async (req) => {
     if (b.tipoReporte === 'CRUCE_FRONTERIZO') {
       const categorias = [['AUTORIZADO', 'AUTORIZADOS', 'autorizados'], ['RECHAZADO', 'RECHAZADOS', 'rechazados'], ['PENDIENTE', 'PENDIENTES', 'pendientes']]
       for (const [estado, categoria, texto] of categorias) {
-        const [{ total }] = await q('SELECT COUNT(*)::int AS total FROM border_crossings WHERE estado = $1', [estado])
+        const [{ total }] = await q('SELECT COUNT(*) AS total FROM border_crossings WHERE estado = $1', [estado])
         await insert('report_details', {
           reportId: reporte.id, descripcion: `Total de cruces ${texto}`, valor: total, unidad: 'cruces', categoria,
         }, q)

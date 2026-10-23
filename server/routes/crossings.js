@@ -12,7 +12,7 @@ export const crossingItemsRouter = Router()
 
 crossingItemsRouter.get('/', h(() => query('SELECT * FROM border_crossing_items ORDER BY id ASC')))
 crossingItemsRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM border_crossing_items WHERE descripcion ILIKE $1 ORDER BY id',
+  query('SELECT * FROM border_crossing_items WHERE UPPER(descripcion) LIKE UPPER($1) ORDER BY id',
     [`%${req.query.descripcion || req.query.texto || ''}%`])))
 filterRoutes(crossingItemsRouter, 'border_crossing_items', {
   '/ultimos': { order: 'id DESC', limit: 10 },
@@ -54,7 +54,7 @@ const router = Router()
 router.get('/', h(() => query('SELECT * FROM border_crossings ORDER BY id ASC')))
 dateRangeRoute(router, 'border_crossings', 'fecha_cruce')
 router.get('/buscar', h((req) =>
-  query('SELECT * FROM border_crossings WHERE pais_destino ILIKE $1 ORDER BY id', [`%${req.query.pais || req.query.texto || ''}%`])))
+  query('SELECT * FROM border_crossings WHERE UPPER(pais_destino) LIKE UPPER($1) ORDER BY id', [`%${req.query.pais || req.query.texto || ''}%`])))
 filterRoutes(router, 'border_crossings', {
   '/ultimos': { order: 'fecha_cruce DESC', limit: 10 },
   '/patente/:patente': { where: 'patente = UPPER($1)' },

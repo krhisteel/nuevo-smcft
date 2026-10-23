@@ -3,12 +3,14 @@ import { Router } from 'express'
 import { query, queryOne, transaction, nowLocal } from '../db.js'
 import { h, badRequest, findById, insert, update, remove, required, countRoutes } from '../http.js'
 
+const placeholders = (list) => list.map((_, i) => `$${i + 1}`).join(', ')
+
 // Adjunta la lista de destinatarios a cada notificación
 async function conDestinatarios(notificaciones) {
   if (!notificaciones.length) return notificaciones
   const ids = notificaciones.map((n) => n.id)
   const recipients = await query(
-    'SELECT * FROM notification_recipients WHERE notification_id = ANY($1::int[]) ORDER BY id', [ids])
+    `SELECT * FROM notification_recipients WHERE notification_id IN (${placeholders(ids)}) ORDER BY id`, ids)
   return notificaciones.map((n) => ({ ...n, destinatarios: recipients.filter((r) => r.notificationId === n.id) }))
 }
 
@@ -16,7 +18,7 @@ async function conDestinatarios(notificaciones) {
 async function conNotificacion(recipients) {
   if (!recipients.length) return recipients
   const ids = [...new Set(recipients.map((r) => r.notificationId))]
-  const notifs = await query('SELECT * FROM notifications WHERE id = ANY($1::int[])', [ids])
+  const notifs = await query(`SELECT * FROM notifications WHERE id IN (${placeholders(ids)})`, ids)
   return recipients.map((r) => ({ ...r, notification: notifs.find((n) => n.id === r.notificationId) || null }))
 }
 
@@ -41,7 +43,7 @@ const listarRecipients = (where = '', params = [], extra = 'ORDER BY id ASC') =>
 
 recipientsRouter.get('/', h(() => listarRecipients()))
 recipientsRouter.get('/no-leidas', h(() => listarRecipients('leida = FALSE')))
-recipientsRouter.get('/ultimos', h(() => listarRecipients('', [], 'ORDER BY id DESC LIMIT 10')))
+recipientsRouter.get('/ultimos', h(() => listarRecipients('', [], 'ORDER BY id DESC FETCH FIRST 10 ROWS ONLY')))
 recipientsRouter.get('/notificacion/:notificationId', h((req) =>
   listarRecipients('notification_id = $1', [req.params.notificationId])))
 recipientsRouter.get('/notificacion/:notificationId/no-leidos', h((req) =>
@@ -52,7 +54,7 @@ recipientsRouter.get('/destinatario/:rut/no-leidas', h((req) =>
   listarRecipients('rut_destinatario = $1 AND leida = FALSE', [req.params.rut], 'ORDER BY id DESC')))
 recipientsRouter.get('/estadisticas/destinatario/:rut', h(async (req) => {
   const row = await queryOne(
-    'SELECT COUNT(*)::int AS total FROM notification_recipients WHERE rut_destinatario = $1 AND leida = FALSE',
+    'SELECT COUNT(*) AS total FROM notification_recipients WHERE rut_destinatario = $1 AND leida = FALSE',
     [req.params.rut])
   return { rut: req.params.rut, total: row.total }
 }))
@@ -82,8 +84,8 @@ router.get('/', h(() => listar()))
 router.get('/pendientes', h(() => listar(`estado = 'PENDIENTE'`, [], 'id DESC')))
 router.get('/enviadas', h(() => listar(`estado = 'ENVIADA'`, [], 'id DESC')))
 router.get('/ultimas', h(() =>
-  query('SELECT * FROM notifications ORDER BY id DESC LIMIT 10').then(conDestinatarios)))
-router.get('/buscar', h((req) => listar('titulo ILIKE $1', [`%${req.query.texto || ''}%`])))
+  query('SELECT * FROM notifications ORDER BY id DESC FETCH FIRST 10 ROWS ONLY').then(conDestinatarios)))
+router.get('/buscar', h((req) => listar('UPPER(titulo) LIKE UPPER($1)', [`%${req.query.texto || ''}%`])))
 router.get('/tipo/:tipo', h((req) => listar('tipo = $1', [req.params.tipo])))
 router.get('/estado/:estado', h((req) => listar('estado = $1', [req.params.estado])))
 countRoutes(router, 'notifications', {

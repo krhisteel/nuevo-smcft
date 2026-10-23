@@ -8,7 +8,7 @@ export const categoriesRouter = Router()
 
 categoriesRouter.get('/', h(() => query('SELECT * FROM item_categories ORDER BY id ASC')))
 categoriesRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM item_categories WHERE nombre ILIKE $1 ORDER BY id', [`%${req.query.nombre || req.query.texto || ''}%`])))
+  query('SELECT * FROM item_categories WHERE UPPER(nombre) LIKE UPPER($1) ORDER BY id', [`%${req.query.nombre || req.query.texto || ''}%`])))
 categoriesRouter.get('/limite', h((req) =>
   query('SELECT * FROM item_categories WHERE limite_valor_usd <= $1 ORDER BY limite_valor_usd', [Number(req.query.limite || 0)])))
 filterRoutes(categoriesRouter, 'item_categories', {
@@ -53,7 +53,7 @@ const router = Router()
 
 router.get('/', h(() => query('SELECT * FROM items ORDER BY id ASC')))
 router.get('/buscar', h((req) =>
-  query('SELECT * FROM items WHERE nombre ILIKE $1 ORDER BY id', [`%${req.query.nombre || req.query.texto || ''}%`])))
+  query('SELECT * FROM items WHERE UPPER(nombre) LIKE UPPER($1) ORDER BY id', [`%${req.query.nombre || req.query.texto || ''}%`])))
 filterRoutes(router, 'items', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/activos': { where: 'activo = TRUE' },

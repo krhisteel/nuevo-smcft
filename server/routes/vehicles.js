@@ -20,9 +20,9 @@ export async function cambiarEstadoVehiculo(patente, nuevoEstado, q = query) {
   if (!ESTADOS.includes(nuevoEstado)) {
     throw badRequest(`Estado inválido. Debe ser: ${ESTADOS.join(', ')}`)
   }
-  const rows = await q('UPDATE vehicles SET estado = $1 WHERE patente = UPPER($2) RETURNING *', [nuevoEstado, patente])
-  if (!rows.length) throw notFound(`Vehículo no encontrado con patente: ${patente}`)
-  return rows[0]
+  const [vehiculo] = await q('SELECT * FROM vehicles WHERE patente = UPPER($1)', [patente])
+  if (!vehiculo) throw notFound(`Vehículo no encontrado con patente: ${patente}`)
+  return update('vehicles', vehiculo.id, { estado: nuevoEstado }, q)
 }
 
 // ---------------- Documentos ----------------
@@ -90,7 +90,7 @@ router.get('/anio/rango', h((req) => {
 }))
 
 router.get('/buscar', h((req) =>
-  query('SELECT * FROM vehicles WHERE marca ILIKE $1 ORDER BY id ASC', [`%${req.query.marca || ''}%`])))
+  query('SELECT * FROM vehicles WHERE UPPER(marca) LIKE UPPER($1) ORDER BY id ASC', [`%${req.query.marca || ''}%`])))
 
 filterRoutes(router, 'vehicles', {
   '/ultimos': { order: 'id DESC', limit: 10 },

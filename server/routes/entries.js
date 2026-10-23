@@ -14,7 +14,7 @@ export const entryItemsRouter = Router()
 
 entryItemsRouter.get('/', h(() => query('SELECT * FROM entry_items ORDER BY id ASC')))
 entryItemsRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM entry_items WHERE descripcion ILIKE $1 ORDER BY id', [`%${req.query.descripcion || req.query.texto || ''}%`])))
+  query('SELECT * FROM entry_items WHERE UPPER(descripcion) LIKE UPPER($1) ORDER BY id', [`%${req.query.descripcion || req.query.texto || ''}%`])))
 filterRoutes(entryItemsRouter, 'entry_items', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/ingreso/:entryId': { where: 'entry_id = $1' },
@@ -49,7 +49,7 @@ const router = Router()
 router.get('/', h(() => query('SELECT * FROM entries ORDER BY id ASC')))
 dateRangeRoute(router, 'entries', 'fecha_ingreso')
 router.get('/buscar', h((req) =>
-  query('SELECT * FROM entries WHERE pais_origen ILIKE $1 ORDER BY id', [`%${req.query.pais || req.query.texto || ''}%`])))
+  query('SELECT * FROM entries WHERE UPPER(pais_origen) LIKE UPPER($1) ORDER BY id', [`%${req.query.pais || req.query.texto || ''}%`])))
 filterRoutes(router, 'entries', {
   '/ultimos': { order: 'fecha_ingreso DESC', limit: 10 },
   '/patente/:patente': { where: 'patente = UPPER($1)' },

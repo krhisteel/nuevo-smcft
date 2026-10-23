@@ -1,8 +1,16 @@
 // Capa de acceso a datos del monolito.
-// - Con DATABASE_URL usa PostgreSQL real (Neon, Supabase, Vercel Postgres...).
-// - Sin DATABASE_URL usa PGlite (Postgres embebido) para desarrollo local.
+// - Con ORACLE_CONNECT_STRING usa Oracle Database (Oracle Cloud). Las tablas
+//   se crean con database/oracle/schema.sql desde SQL Developer.
+// - Con DATABASE_URL usa PostgreSQL.
+// - Sin ninguna de las dos usa PGlite (Postgres embebido) para desarrollo local.
 import { schemaSql } from './schema.js'
 import { seed } from './seed.js'
+
+// Marcador para pedir el id generado en un INSERT (solo Oracle)
+export const OUT_ID = Symbol('OUT_ID')
+
+export const dialect = () =>
+  (process.env.ORACLE_CONNECT_STRING ? 'oracle' : process.env.DATABASE_URL ? 'postgres' : 'pglite')
 
 // Los TIMESTAMP se devuelven como "YYYY-MM-DDTHH:mm:ss" (hora local, sin zona),
 // igual que LocalDateTime en la versión Java.
@@ -16,7 +24,12 @@ const parsers = {
 let backend = null
 
 async function createBackend() {
-  if (process.env.DATABASE_URL) {
+  if (dialect() === 'oracle') {
+    const { createOracleBackend } = await import('./oracle.js')
+    return createOracleBackend(OUT_ID)
+  }
+
+  if (dialect() === 'postgres') {
     const { default: pg } = await import('pg')
     for (const [oid, fn] of Object.entries(parsers)) pg.types.setTypeParser(Number(oid), fn)
     const url = process.env.DATABASE_URL
@@ -50,7 +63,7 @@ async function createBackend() {
   // En Vercel el sistema de archivos es efímero: sin DATABASE_URL se usa memoria.
   const dataDir = process.env.VERCEL ? undefined : (process.env.PGLITE_DIR || './.data/pglite')
   if (process.env.VERCEL) {
-    console.warn('[SMCFT] DATABASE_URL no configurada: usando base en memoria (los datos se pierden).')
+    console.warn('[SMCFT] Sin base de datos configurada: usando base en memoria (los datos se pierden).')
   }
   if (dataDir && !dataDir.includes('://')) {
     const fs = await import('node:fs')
@@ -71,8 +84,16 @@ export function ensureReady() {
   if (!readyPromise) {
     readyPromise = (async () => {
       backend = await createBackend()
-      await backend.exec(schemaSql)
-      await seed(query)
+      if (dialect() === 'oracle') {
+        // En Oracle el esquema lo crea el script de SQL Developer
+        await seed(query).catch((err) => {
+          throw new Error(`No se pudo usar la base Oracle (${err.message}). `
+            + '¿Se ejecutó database/oracle/schema.sql?')
+        })
+      } else {
+        await backend.exec(schemaSql)
+        await seed(query)
+      }
     })().catch((err) => {
       readyPromise = null
       throw err

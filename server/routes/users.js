@@ -51,7 +51,7 @@ const router = Router()
 
 router.get('/', h(async (req) => {
   if (req.query.buscar) {
-    return publicos(await query('SELECT * FROM users WHERE nombre ILIKE $1 ORDER BY id', [`%${req.query.buscar}%`]))
+    return publicos(await query('SELECT * FROM users WHERE UPPER(nombre) LIKE UPPER($1) ORDER BY id', [`%${req.query.buscar}%`]))
   }
   return publicos(await query('SELECT * FROM users ORDER BY id ASC'))
 }))
@@ -84,7 +84,7 @@ for (const [path, def] of Object.entries(filtros)) {
 }
 
 router.get('/buscar', h(async (req) =>
-  publicos(await query('SELECT * FROM users WHERE nombre ILIKE $1 ORDER BY id', [`%${req.query.nombre || ''}%`]))))
+  publicos(await query('SELECT * FROM users WHERE UPPER(nombre) LIKE UPPER($1) ORDER BY id', [`%${req.query.nombre || ''}%`]))))
 
 router.get('/:id', h(async (req) => publico(await findById('users', req.params.id, 'Usuario'))))
 

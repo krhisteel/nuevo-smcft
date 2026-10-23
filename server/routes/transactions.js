@@ -12,7 +12,7 @@ export const detailsRouter = Router()
 
 detailsRouter.get('/', h(() => query('SELECT * FROM transaction_details ORDER BY id ASC')))
 detailsRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM transaction_details WHERE concepto ILIKE $1 ORDER BY id', [`%${req.query.concepto || req.query.texto || ''}%`])))
+  query('SELECT * FROM transaction_details WHERE UPPER(concepto) LIKE UPPER($1) ORDER BY id', [`%${req.query.concepto || req.query.texto || ''}%`])))
 filterRoutes(detailsRouter, 'transaction_details', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/transaccion/:transactionId': { where: 'transaction_id = $1' },
@@ -55,7 +55,7 @@ dateRangeRoute(router, 'transactions', 'created_at')
 router.get('/monto/mayor', h((req) =>
   query('SELECT * FROM transactions WHERE monto_total > $1 ORDER BY monto_total DESC', [Number(req.query.monto || 0)])))
 router.get('/buscar', h((req) =>
-  query('SELECT * FROM transactions WHERE descripcion ILIKE $1 ORDER BY id', [`%${req.query.texto || ''}%`])))
+  query('SELECT * FROM transactions WHERE UPPER(descripcion) LIKE UPPER($1) ORDER BY id', [`%${req.query.texto || ''}%`])))
 filterRoutes(router, 'transactions', {
   '/ultimas': { order: 'created_at DESC, id DESC', limit: 10 },
   '/usuario/:rut': { where: 'rut_usuario = $1' },

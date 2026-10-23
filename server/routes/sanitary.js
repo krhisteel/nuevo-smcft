@@ -14,7 +14,7 @@ export const sanitaryItemsRouter = Router()
 
 sanitaryItemsRouter.get('/', h(() => query('SELECT * FROM sanitary_items ORDER BY id ASC')))
 sanitaryItemsRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM sanitary_items WHERE descripcion ILIKE $1 ORDER BY id', [`%${req.query.descripcion || req.query.texto || ''}%`])))
+  query('SELECT * FROM sanitary_items WHERE UPPER(descripcion) LIKE UPPER($1) ORDER BY id', [`%${req.query.descripcion || req.query.texto || ''}%`])))
 filterRoutes(sanitaryItemsRouter, 'sanitary_items', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/inspeccion/:sanitaryId': { where: 'inspection_id = $1' },
@@ -24,7 +24,7 @@ filterRoutes(sanitaryItemsRouter, 'sanitary_items', {
 })
 sanitaryItemsRouter.get('/estadisticas/rechazados/:sanitaryId', h(async (req) => {
   const row = await queryOne(
-    `SELECT COUNT(*)::int AS total FROM sanitary_items WHERE inspection_id = $1 AND resultado_item = 'RECHAZADO'`,
+    `SELECT COUNT(*) AS total FROM sanitary_items WHERE inspection_id = $1 AND resultado_item = 'RECHAZADO'`,
     [req.params.sanitaryId])
   return { inspectionId: Number(req.params.sanitaryId), total: row.total }
 }))

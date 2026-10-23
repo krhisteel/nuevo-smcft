@@ -22,7 +22,7 @@ filterRoutes(alertsRouter, 'deadline_alerts', {
   '/deadline/:deadlineId/ordenadas': { where: 'deadline_id = $1', order: 'dias_restantes ASC' },
 })
 alertsRouter.get('/estadisticas/pendientes', h(async () => {
-  const row = await queryOne('SELECT COUNT(*)::int AS total FROM deadline_alerts WHERE enviada = FALSE')
+  const row = await queryOne('SELECT COUNT(*) AS total FROM deadline_alerts WHERE enviada = FALSE')
   return { total: row.total }
 }))
 alertsRouter.get('/:id', h((req) => findById('deadline_alerts', req.params.id, 'Alerta')))

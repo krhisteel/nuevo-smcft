@@ -13,7 +13,7 @@ export const auditDetailsRouter = Router()
 auditDetailsRouter.get('/', h(() => query('SELECT * FROM audit_details ORDER BY id ASC')))
 dateRangeRoute(auditDetailsRouter, 'audit_details', 'fecha_accion')
 auditDetailsRouter.get('/buscar', h((req) =>
-  query('SELECT * FROM audit_details WHERE accion ILIKE $1 ORDER BY id', [`%${req.query.accion || req.query.texto || ''}%`])))
+  query('SELECT * FROM audit_details WHERE UPPER(accion) LIKE UPPER($1) ORDER BY id', [`%${req.query.accion || req.query.texto || ''}%`])))
 filterRoutes(auditDetailsRouter, 'audit_details', {
   '/ultimos': { order: 'id DESC', limit: 10 },
   '/auditoria/:auditId': { where: 'audit_id = $1' },
@@ -25,7 +25,7 @@ filterRoutes(auditDetailsRouter, 'audit_details', {
 })
 auditDetailsRouter.get('/estadisticas/sospechosos/:rut', h(async (req) => {
   const row = await queryOne(
-    `SELECT COUNT(*)::int AS total FROM audit_details WHERE rut_usuario = $1 AND resultado = 'SOSPECHOSO'`,
+    `SELECT COUNT(*) AS total FROM audit_details WHERE rut_usuario = $1 AND resultado = 'SOSPECHOSO'`,
     [req.params.rut])
   return { rut: req.params.rut, total: row.total }
 }))

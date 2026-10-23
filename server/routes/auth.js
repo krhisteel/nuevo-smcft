@@ -2,7 +2,7 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { query, queryOne } from '../db.js'
-import { h, HttpError, badRequest, findById, remove, required, filterRoutes } from '../http.js'
+import { h, HttpError, badRequest, findById, insert, remove, required, filterRoutes } from '../http.js'
 import { generarToken, decodificar, extraerToken, enBlacklist } from '../auth.js'
 
 const router = Router()
@@ -38,13 +38,11 @@ router.post('/logout', h(async (req) => {
   if (!token || !decodificar(token)) throw badRequest('El token ya es inválido o ha expirado')
   if (await enBlacklist(token)) throw badRequest('El token ya fue invalidado')
   const email = decodificar(token).sub
-  const guardado = await queryOne(
-    'INSERT INTO token_blacklist (token, email) VALUES ($1, $2) RETURNING *', [token, email],
-  )
+  const guardado = await insert('token_blacklist', { token, email })
   // Vincula el último login exitoso con el token invalidado
   await query(
     `UPDATE login_attempts SET token_blacklist_id = $1
-     WHERE id = (SELECT id FROM login_attempts WHERE email = $2 AND exitoso = TRUE ORDER BY id DESC LIMIT 1)`,
+     WHERE id = (SELECT MAX(id) FROM login_attempts WHERE email = $2 AND exitoso = TRUE)`,
     [guardado.id, email],
   )
   return { mensaje: 'Logout exitoso' }
@@ -65,7 +63,7 @@ router.get('/rol', h(async (req) => {
 
 // ---- Blacklist ----
 router.get('/blacklist', h(() => query('SELECT * FROM token_blacklist ORDER BY id ASC')))
-router.get('/blacklist/ultimos', h(() => query('SELECT * FROM token_blacklist ORDER BY id DESC LIMIT 10')))
+router.get('/blacklist/ultimos', h(() => query('SELECT * FROM token_blacklist ORDER BY id DESC FETCH FIRST 10 ROWS ONLY')))
 router.get('/blacklist/historial/:email', h((req) =>
   query('SELECT * FROM token_blacklist WHERE email = $1 ORDER BY invalidado_at DESC', [req.params.email])))
 router.get('/blacklist/:id', h((req) => findById('token_blacklist', req.params.id, 'Registro')))

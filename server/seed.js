@@ -16,24 +16,24 @@ const categories = [
 ]
 
 export async function seed(query) {
-  const [{ total }] = await query('SELECT COUNT(*)::int AS total FROM users')
+  const [{ total }] = await query('SELECT COUNT(*) AS total FROM users')
   if (total === 0) {
     for (const u of users) {
       const hash = await bcrypt.hash(u.password, 10)
       await query(
         `INSERT INTO users (rut, nombre, email, password, rol, activo)
-         VALUES ($1, $2, $3, $4, $5, TRUE) ON CONFLICT DO NOTHING`,
+         VALUES ($1, $2, $3, $4, $5, TRUE)`,
         [u.rut, u.nombre, u.email, hash, u.rol],
       )
     }
   }
 
-  const [{ total: cats }] = await query('SELECT COUNT(*)::int AS total FROM item_categories')
+  const [{ total: cats }] = await query('SELECT COUNT(*) AS total FROM item_categories')
   if (cats === 0) {
     for (const c of categories) {
       await query(
         `INSERT INTO item_categories (nombre, descripcion, requiere_declaracion, limite_valor_usd)
-         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+         VALUES ($1, $2, $3, $4)`,
         [c.nombre, c.descripcion, c.requiere, c.limite],
       )
     }

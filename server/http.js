@@ -1,5 +1,5 @@
 // Utilidades compartidas por todos los módulos de la API.
-import { query, queryOne } from './db.js'
+import { query, queryOne, dialect, OUT_ID } from './db.js'
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -48,24 +48,29 @@ export async function insert(table, data, q = query) {
   const keys = Object.keys(data).filter((k) => data[k] !== undefined)
   const cols = keys.map(toSnake).join(', ')
   const vals = keys.map((_, i) => `$${i + 1}`).join(', ')
-  const rows = await q(`INSERT INTO ${table} (${cols}) VALUES (${vals}) RETURNING *`, keys.map((k) => data[k]))
+  const params = keys.map((k) => data[k])
+  if (dialect() === 'oracle') {
+    // Oracle no soporta RETURNING *: se obtiene el id generado y se relee la fila
+    const [{ id }] = await q(
+      `INSERT INTO ${table} (${cols}) VALUES (${vals}) RETURNING id INTO $${keys.length + 1}`, [...params, OUT_ID])
+    return (await q(`SELECT * FROM ${table} WHERE id = $1`, [id]))[0]
+  }
+  const rows = await q(`INSERT INTO ${table} (${cols}) VALUES (${vals}) RETURNING *`, params)
   return rows[0]
 }
 
 export async function update(table, id, data, q = query) {
   const keys = Object.keys(data).filter((k) => data[k] !== undefined)
-  if (!keys.length) return queryOne(`SELECT * FROM ${table} WHERE id = $1`, [id])
-  const sets = keys.map((k, i) => `${toSnake(k)} = $${i + 1}`).join(', ')
-  const rows = await q(
-    `UPDATE ${table} SET ${sets} WHERE id = $${keys.length + 1} RETURNING *`,
-    [...keys.map((k) => data[k]), id],
-  )
-  return rows[0]
+  if (keys.length) {
+    const sets = keys.map((k, i) => `${toSnake(k)} = $${i + 1}`).join(', ')
+    await q(`UPDATE ${table} SET ${sets} WHERE id = $${keys.length + 1}`, [...keys.map((k) => data[k]), id])
+  }
+  return (await q(`SELECT * FROM ${table} WHERE id = $1`, [id]))[0]
 }
 
 export async function remove(table, id, label) {
-  const rows = await query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [toId(id)])
-  if (!rows.length) throw notFound(`${label} no encontrado con id: ${id}`)
+  const existente = await findById(table, id, label)
+  await query(`DELETE FROM ${table} WHERE id = $1`, [existente.id])
 }
 
 // Registra rutas GET de filtro simples a partir de una tabla de definiciones:
@@ -78,7 +83,7 @@ export function filterRoutes(router, table, defs) {
       const params = names.map((n) => req.params[n])
       const where = def.where ? `WHERE ${def.where}` : ''
       const order = `ORDER BY ${def.order || 'id ASC'}`
-      const limit = def.limit ? `LIMIT ${def.limit}` : ''
+      const limit = def.limit ? `FETCH FIRST ${def.limit} ROWS ONLY` : ''
       return query(`SELECT * FROM ${table} ${where} ${order} ${limit}`, params)
     }))
   }
@@ -90,7 +95,7 @@ export function countRoutes(router, table, defs) {
     const name = path.match(/:(\w+)/)[1]
     router.get(path, h(async (req) => {
       const row = await queryOne(
-        `SELECT COUNT(*)::int AS total FROM ${table} WHERE ${column} = $1`,
+        `SELECT COUNT(*) AS total FROM ${table} WHERE ${column} = $1`,
         [req.params[name]],
       )
       return { [name]: req.params[name], total: row.total }
@@ -113,7 +118,7 @@ export function dateRangeRoute(router, table, column) {
 export function searchRoute(router, table, column, param = 'texto') {
   router.get('/buscar', h(async (req) => {
     const texto = req.query[param] ?? req.query.texto ?? ''
-    return query(`SELECT * FROM ${table} WHERE ${column} ILIKE $1 ORDER BY id ASC`, [`%${texto}%`])
+    return query(`SELECT * FROM ${table} WHERE UPPER(${column}) LIKE UPPER($1) ORDER BY id ASC`, [`%${texto}%`])
   }))
 }
 
@@ -127,4 +132,8 @@ export function assertNotFuture(fecha, message) {
 }
 
 // Normaliza fechas que vienen del cliente ("2025-01-01T10:00:00.000Z" o sin zona).
-export const toTimestamp = (v) => (v ? String(v).replace('Z', '').split('.')[0] : v)
+export const toTimestamp = (v) => {
+  if (!v) return v
+  const s = String(v).replace('Z', '').split('.')[0].replace(' ', 'T')
+  return /T\d{2}:\d{2}$/.test(s) ? `${s}:00` : s
+}
