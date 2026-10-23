@@ -1,5 +1,4 @@
-// Utilidades compartidas por todos los módulos de la API.
-import { query, queryOne, dialect, OUT_ID } from './db.js'
+// Utilidades compartidas por los módulos de la API.
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -10,6 +9,7 @@ export class HttpError extends Error {
 
 export const badRequest = (msg) => new HttpError(400, msg)
 export const notFound = (msg) => new HttpError(404, msg)
+export const forbidden = (msg = 'No tiene permisos para esta acción') => new HttpError(403, msg)
 
 // Envuelve un handler async: lo que retorne se envía como JSON.
 // Si retorna undefined se responde 204 (sin contenido).
@@ -24,116 +24,51 @@ export const h = (fn, status = 200) => async (req, res, next) => {
   }
 }
 
-const toSnake = (s) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
-
 // Valida que los campos obligatorios vengan con valor.
 export function required(body, fields) {
-  const faltantes = fields.filter((f) => body[f] === undefined || body[f] === null || String(body[f]).trim() === '')
+  const faltantes = fields.filter((f) => body?.[f] === undefined || body[f] === null || String(body[f]).trim() === '')
   if (faltantes.length) throw badRequest(`Campos obligatorios: ${faltantes.join(', ')}`)
 }
 
 export const toId = (v) => {
   const n = Number(v)
-  if (!Number.isInteger(n)) throw badRequest(`Identificador inválido: ${v}`)
+  if (!Number.isInteger(n) || n <= 0) throw badRequest(`Identificador inválido: ${v}`)
   return n
 }
 
-export async function findById(table, id, label) {
-  const row = await queryOne(`SELECT * FROM ${table} WHERE id = $1`, [toId(id)])
-  if (!row) throw notFound(`${label} no encontrado con id: ${id}`)
-  return row
-}
+export const texto = (v) => (v === undefined || v === null || String(v).trim() === '' ? null : String(v).trim())
+export const numero = (v) => (v === undefined || v === null || v === '' ? null : Number(v))
 
-export async function insert(table, data, q = query) {
-  const keys = Object.keys(data).filter((k) => data[k] !== undefined)
-  const cols = keys.map(toSnake).join(', ')
-  const vals = keys.map((_, i) => `$${i + 1}`).join(', ')
-  const params = keys.map((k) => data[k])
-  if (dialect() === 'oracle') {
-    // Oracle no soporta RETURNING *: se obtiene el id generado y se relee la fila
-    const [{ id }] = await q(
-      `INSERT INTO ${table} (${cols}) VALUES (${vals}) RETURNING id INTO $${keys.length + 1}`, [...params, OUT_ID])
-    return (await q(`SELECT * FROM ${table} WHERE id = $1`, [id]))[0]
+// Middleware: solo deja pasar a los roles indicados
+export const permitir = (...roles) => (req, res, next) =>
+  next(roles.includes(req.user?.rol) ? undefined : forbidden())
+
+// Roles de funcionarios (todos menos el viajero)
+export const STAFF = ['ADMINISTRADOR', 'FISCALIZADOR', 'INSPECTOR_SAG', 'AUDITOR']
+export const esViajero = (req) => req.user?.rol === 'VIAJERO'
+
+// Traduce errores de Oracle a mensajes entendibles para el usuario.
+export function traducirErrorOracle(err) {
+  const msg = err.message || ''
+  const code = (msg.match(/ORA-(\d{5})/) || [])[1]
+  if (!code) return null
+  // Errores de negocio lanzados por el package / triggers (RAISE_APPLICATION_ERROR)
+  if (/^20\d{3}$/.test(code)) {
+    return { status: 400, message: msg.split('\n')[0].replace(/^ORA-\d{5}:\s*/, '') }
   }
-  const rows = await q(`INSERT INTO ${table} (${cols}) VALUES (${vals}) RETURNING *`, params)
-  return rows[0]
-}
-
-export async function update(table, id, data, q = query) {
-  const keys = Object.keys(data).filter((k) => data[k] !== undefined)
-  if (keys.length) {
-    const sets = keys.map((k, i) => `${toSnake(k)} = $${i + 1}`).join(', ')
-    await q(`UPDATE ${table} SET ${sets} WHERE id = $${keys.length + 1}`, [...keys.map((k) => data[k]), id])
+  const mapa = {
+    '00001': 'Ya existe un registro con esos datos (valor duplicado).',
+    '02291': 'Uno de los datos relacionados no existe.',
+    '02292': 'No se puede eliminar: el registro tiene información asociada.',
+    '01400': 'Falta un campo obligatorio.',
+    '12899': 'Uno de los valores es demasiado largo.',
+    '01722': 'Uno de los valores numéricos no es válido.',
+    '01830': 'Formato de fecha inválido.',
+    '01841': 'Formato de fecha inválido.',
+    '01843': 'Formato de fecha inválido.',
+    '01847': 'Formato de fecha inválido.',
+    '01861': 'Formato de fecha inválido.',
+    '02290': 'Los datos no cumplen una regla de la base de datos.',
   }
-  return (await q(`SELECT * FROM ${table} WHERE id = $1`, [id]))[0]
-}
-
-export async function remove(table, id, label) {
-  const existente = await findById(table, id, label)
-  await query(`DELETE FROM ${table} WHERE id = $1`, [existente.id])
-}
-
-// Registra rutas GET de filtro simples a partir de una tabla de definiciones:
-//   { '/estado/:estado': { where: 'estado = $1', order: 'id DESC', limit: 10 } }
-// Los parámetros de la ruta se pasan en el orden en que aparecen.
-export function filterRoutes(router, table, defs) {
-  for (const [path, def] of Object.entries(defs)) {
-    const names = [...path.matchAll(/:(\w+)/g)].map((m) => m[1])
-    router.get(path, h(async (req) => {
-      const params = names.map((n) => req.params[n])
-      const where = def.where ? `WHERE ${def.where}` : ''
-      const order = `ORDER BY ${def.order || 'id ASC'}`
-      const limit = def.limit ? `FETCH FIRST ${def.limit} ROWS ONLY` : ''
-      return query(`SELECT * FROM ${table} ${where} ${order} ${limit}`, params)
-    }))
-  }
-}
-
-// Registra rutas GET de conteo: devuelven { <campo>: valor, total: n }.
-export function countRoutes(router, table, defs) {
-  for (const [path, column] of Object.entries(defs)) {
-    const name = path.match(/:(\w+)/)[1]
-    router.get(path, h(async (req) => {
-      const row = await queryOne(
-        `SELECT COUNT(*) AS total FROM ${table} WHERE ${column} = $1`,
-        [req.params[name]],
-      )
-      return { [name]: req.params[name], total: row.total }
-    }))
-  }
-}
-
-// Ruta GET /fechas?desde=...&hasta=... sobre una columna de fecha.
-export function dateRangeRoute(router, table, column) {
-  router.get('/fechas', h(async (req) => {
-    required(req.query, ['desde', 'hasta'])
-    return query(
-      `SELECT * FROM ${table} WHERE ${column} BETWEEN $1 AND $2 ORDER BY ${column} ASC`,
-      [req.query.desde, req.query.hasta],
-    )
-  }))
-}
-
-// Ruta GET /buscar?<param>=texto (búsqueda parcial sin distinguir mayúsculas).
-export function searchRoute(router, table, column, param = 'texto') {
-  router.get('/buscar', h(async (req) => {
-    const texto = req.query[param] ?? req.query.texto ?? ''
-    return query(`SELECT * FROM ${table} WHERE UPPER(${column}) LIKE UPPER($1) ORDER BY id ASC`, [`%${texto}%`])
-  }))
-}
-
-// Rechaza fechas futuras. Se tolera la diferencia horaria del navegador
-// (el cliente envía su hora local sin zona horaria).
-export function assertNotFuture(fecha, message) {
-  if (!fecha) return
-  const value = Date.parse(fecha)
-  if (Number.isNaN(value)) throw badRequest(`Fecha inválida: ${fecha}`)
-  if (value > Date.now() + 14 * 3600 * 1000) throw badRequest(message)
-}
-
-// Normaliza fechas que vienen del cliente ("2025-01-01T10:00:00.000Z" o sin zona).
-export const toTimestamp = (v) => {
-  if (!v) return v
-  const s = String(v).replace('Z', '').split('.')[0].replace(' ', 'T')
-  return /T\d{2}:\d{2}$/.test(s) ? `${s}:00` : s
+  return mapa[code] ? { status: 400, message: mapa[code] } : null
 }

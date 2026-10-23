@@ -17,6 +17,10 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Las variables usadas solo en JSX empiezan con mayúscula (componentes)
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^[A-Z_]' }],
+    },
   },
   {
     files: ['server/**/*.js', 'api/**/*.js', '*.config.js'],

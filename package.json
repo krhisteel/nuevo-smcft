@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.0.0",
   "type": "module",
-  "description": "SMCFT - Sistema de Monitoreo y Control Fronterizo Terrestre (monolito React + API Node)",
+  "description": "SMCFT - Sistema de Monitoreo y Control Fronterizo Terrestre (React + API Node sobre Oracle Cloud)",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --watch-path=server --watch-path=api server/dev.js",
@@ -17,13 +17,11 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.0",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "oracledb": "^6.10.0",
-    "pg": "^8.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0"

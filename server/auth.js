@@ -1,28 +1,21 @@
-// Autenticación JWT (antes AuthService + JwtFilter de cada microservicio).
+// Autenticación con JWT. Los usuarios y roles salen de las tablas
+// USUARIO, PERSONA, USUARIO_ROL y ROL del esquema SMCFT.
 import jwt from 'jsonwebtoken'
-import { queryOne } from './db.js'
 import { HttpError } from './http.js'
 
 const DEV_SECRET = 'smcft_clave_super_secreta_2025_sistema_fronterizo'
 
-function secret() {
-  if (!process.env.JWT_SECRET && process.env.VERCEL_ENV === 'production') {
-    console.warn('[SMCFT] JWT_SECRET no configurado: usando clave de desarrollo.')
-  }
-  return process.env.JWT_SECRET || DEV_SECRET
+const secret = () => process.env.JWT_SECRET || DEV_SECRET
+const expirationSec = () => Math.floor(Number(process.env.JWT_EXPIRATION_MS || 86400000) / 1000)
+
+export function generarToken(usuario) {
+  return jwt.sign(
+    { rol: usuario.rol, idUsuario: usuario.idUsuario, idPersona: usuario.idPersona, rut: usuario.rut },
+    secret(),
+    { subject: usuario.email, algorithm: 'HS256', expiresIn: expirationSec() },
+  )
 }
 
-const expirationMs = () => Number(process.env.JWT_EXPIRATION_MS || 86400000)
-
-export function generarToken(email, rol) {
-  return jwt.sign({ rol }, secret(), {
-    subject: email,
-    algorithm: 'HS256',
-    expiresIn: Math.floor(expirationMs() / 1000),
-  })
-}
-
-// Devuelve los claims si la firma es válida y no expiró; si no, null.
 export function decodificar(token) {
   try {
     return jwt.verify(token, secret(), { algorithms: ['HS256'] })
@@ -31,37 +24,19 @@ export function decodificar(token) {
   }
 }
 
-export function extraerToken(req) {
-  const header = req.headers.authorization || ''
-  return header.startsWith('Bearer ') ? header.slice(7) : null
-}
-
-export async function enBlacklist(token) {
-  return !!(await queryOne('SELECT id FROM token_blacklist WHERE token = $1 FETCH FIRST 1 ROWS ONLY', [token]))
-}
-
-// Rutas accesibles sin token (igual que los permitAll de los SecurityConfig).
+// Rutas accesibles sin token
 const publicas = [
   ['POST', /^\/auth\/login$/],
-  ['GET', /^\/auth\/validar$/],
-  ['GET', /^\/auth\/rol$/],
-  ['POST', /^\/users$/],
   ['GET', /^\/health$/],
 ]
 
-export async function requireAuth(req, res, next) {
-  if (req.method === 'OPTIONS') return next()
+export function requireAuth(req, res, next) {
   if (publicas.some(([m, re]) => m === req.method && re.test(req.path))) return next()
-  try {
-    const token = extraerToken(req)
-    const claims = token && decodificar(token)
-    if (!claims || (await enBlacklist(token))) {
-      throw new HttpError(401, 'Token inválido, expirado o ausente')
-    }
-    req.user = { email: claims.sub, rol: claims.rol }
-    req.token = token
-    next()
-  } catch (err) {
-    next(err)
+  const header = req.headers.authorization || ''
+  const claims = header.startsWith('Bearer ') && decodificar(header.slice(7))
+  if (!claims) return next(new HttpError(401, 'Sesión inválida o expirada'))
+  req.user = {
+    email: claims.sub, rol: claims.rol, idUsuario: claims.idUsuario, idPersona: claims.idPersona, rut: claims.rut,
   }
+  next()
 }

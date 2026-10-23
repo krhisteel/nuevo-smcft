@@ -4,10 +4,13 @@ import { useAuth } from '../context/AuthContext'
 import Logo from '../components/Logo'
 import Icon from '../components/Icons'
 
+// Usuarios habilitados por database/oracle/04_credenciales_web.sql
 const testUsers = [
-  { label: 'Administrador', email: 'admin@aduana.cl', pass: 'admin123', hue: '#4f8cff' },
-  { label: 'Fiscalizador', email: 'fiscal@aduana.cl', pass: 'fiscal123', hue: '#818cf8' },
-  { label: 'Viajero', email: 'viajero@aduana.cl', pass: 'viajero123', hue: '#34d399' },
+  { label: 'Admin', email: 'camila.soto@example.com', pass: 'admin123', hue: '#4f8cff' },
+  { label: 'Fiscalizador', email: 'diego.munoz@example.com', pass: 'fiscal123', hue: '#818cf8' },
+  { label: 'SAG', email: 'valentina.gonzalez@example.com', pass: 'sag123', hue: '#f59e0b' },
+  { label: 'Auditor', email: 'matias.rojas@example.com', pass: 'auditor123', hue: '#06b6d4' },
+  { label: 'Viajero', email: 'isidora.perez@example.com', pass: 'viajero123', hue: '#34d399' },
 ]
 
 export default function Login() {
@@ -79,7 +82,7 @@ export default function Login() {
                       onChange={(e) => setEmail(e.target.value)}
                       onFocus={() => setActiveField('email')}
                       onBlur={() => setActiveField(null)}
-                      placeholder="usuario@aduana.cl"
+                      placeholder="usuario@example.com"
                       required
                       className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-sm text-white/80 placeholder-white/15 outline-none transition"
                     />
@@ -138,7 +141,7 @@ export default function Login() {
                     <span className="px-3 text-[10px] text-white/20 bg-[#0a1628]/80 rounded-full py-0.5">Acceso rápido</span>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {testUsers.map((u) => (
                     <button
                       key={u.label}

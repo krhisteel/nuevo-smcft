@@ -1,87 +1,78 @@
-// /api/v1/auth — login, logout, validación de tokens, blacklist e intentos.
+// /api/v1/auth — inicio de sesión contra USUARIO / USUARIO_ROL / ROL.
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
-import { query, queryOne } from '../db.js'
-import { h, HttpError, badRequest, findById, insert, remove, required, filterRoutes } from '../http.js'
-import { generarToken, decodificar, extraerToken, enBlacklist } from '../auth.js'
+import { query, transaction } from '../db.js'
+import { h, HttpError, required, permitir } from '../http.js'
+import { generarToken } from '../auth.js'
 
 const router = Router()
 
 const ip = (req) => (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 45)
 
-async function registrarIntento(email, exitoso, req) {
-  await query('INSERT INTO login_attempts (email, exitoso, ip_address) VALUES ($1, $2, $3)', [email, exitoso, ip(req)])
-}
+// Rol activo más reciente del usuario
+export const ROL_ACTIVO_SQL = `(
+  SELECT r.NOMBRE_ROL FROM USUARIO_ROL ur JOIN ROL r ON r.ID_ROL = ur.ID_ROL
+  WHERE ur.ID_USUARIO = u.ID_USUARIO AND ur.ACTIVO = 'S'
+  ORDER BY ur.FECHA_ASIGNACION DESC, ur.ID_USUARIO_ROL DESC
+  FETCH FIRST 1 ROWS ONLY)`
 
 router.post('/login', h(async (req) => {
   required(req.body, ['email', 'password'])
-  const { email, password } = req.body
-  const usuario = await queryOne('SELECT * FROM users WHERE email = $1', [email])
-  if (!usuario) {
-    await registrarIntento(email, false, req)
-    throw new HttpError(401, 'Credenciales incorrectas')
-  }
-  if (!usuario.activo) {
-    await registrarIntento(email, false, req)
-    throw new HttpError(401, 'El usuario está inactivo')
-  }
-  if (!(await bcrypt.compare(password, usuario.password))) {
-    await registrarIntento(email, false, req)
-    throw new HttpError(401, 'Credenciales incorrectas')
-  }
-  await registrarIntento(email, true, req)
-  return { token: generarToken(usuario.email, usuario.rol), rol: usuario.rol, mensaje: 'Login exitoso' }
+  const email = String(req.body.email).trim().toLowerCase()
+
+  return transaction(async (db) => {
+    const usuario = await db.queryOne(
+      `SELECT u.ID_USUARIO, u.ID_PERSONA, u.EMAIL, u.PASSWORD_HASH, u.ACTIVO, p.RUT,
+              p.NOMBRES || ' ' || p.APELLIDOS AS nombre, ${ROL_ACTIVO_SQL} AS rol
+       FROM USUARIO u JOIN PERSONA p ON p.ID_PERSONA = u.ID_PERSONA
+       WHERE LOWER(u.EMAIL) = :email`,
+      { email },
+    )
+
+    const registrar = async (exitoso) => {
+      const id = await db.nextId('LOGIN_ATTEMPT', 'ID_INTENTO')
+      await db.execute(
+        `INSERT INTO LOGIN_ATTEMPT (ID_INTENTO, ID_USUARIO, EXITOSO, IP_ADDRESS, FECHA_INTENTO)
+         VALUES (:id, :u, :e, :ip, SYSTIMESTAMP)`,
+        { id, u: usuario?.idUsuario ?? null, e: exitoso ? 'S' : 'N', ip: ip(req) || null },
+      )
+    }
+
+    let error = null
+    if (!usuario) error = 'Credenciales incorrectas'
+    else if (!usuario.activo) error = 'El usuario está inactivo'
+    else if (!String(usuario.passwordHash).startsWith('$2')) error = 'Este usuario no tiene acceso web habilitado'
+    else if (!(await bcrypt.compare(String(req.body.password), usuario.passwordHash))) error = 'Credenciales incorrectas'
+    else if (!usuario.rol) error = 'El usuario no tiene un rol asignado'
+
+    await registrar(!error)
+    if (error) {
+      // Se confirma el intento fallido antes de responder con error
+      await db.execute('COMMIT')
+      throw new HttpError(401, error)
+    }
+
+    return {
+      token: generarToken(usuario),
+      rol: usuario.rol,
+      email: usuario.email,
+      rut: usuario.rut,
+      nombre: usuario.nombre,
+      idPersona: usuario.idPersona,
+    }
+  })
 }))
 
-router.post('/logout', h(async (req) => {
-  const token = extraerToken(req)
-  if (!token || !decodificar(token)) throw badRequest('El token ya es inválido o ha expirado')
-  if (await enBlacklist(token)) throw badRequest('El token ya fue invalidado')
-  const email = decodificar(token).sub
-  const guardado = await insert('token_blacklist', { token, email })
-  // Vincula el último login exitoso con el token invalidado
-  await query(
-    `UPDATE login_attempts SET token_blacklist_id = $1
-     WHERE id = (SELECT MAX(id) FROM login_attempts WHERE email = $2 AND exitoso = TRUE)`,
-    [guardado.id, email],
-  )
-  return { mensaje: 'Logout exitoso' }
-}))
+// El token es autocontenido: cerrar sesión solo lo descarta en el navegador
+router.post('/logout', h(() => ({ mensaje: 'Sesión cerrada' })))
 
-router.get('/validar', h(async (req) => {
-  const token = extraerToken(req)
-  const valido = !!(token && decodificar(token) && !(await enBlacklist(token)))
-  return { valido }
-}))
+router.get('/me', h((req) => req.user))
 
-router.get('/rol', h(async (req) => {
-  const token = extraerToken(req)
-  const claims = token && decodificar(token)
-  if (!claims || (await enBlacklist(token))) throw new HttpError(401, 'Token inválido o expirado')
-  return { rol: claims.rol }
-}))
-
-// ---- Blacklist ----
-router.get('/blacklist', h(() => query('SELECT * FROM token_blacklist ORDER BY id ASC')))
-router.get('/blacklist/ultimos', h(() => query('SELECT * FROM token_blacklist ORDER BY id DESC FETCH FIRST 10 ROWS ONLY')))
-router.get('/blacklist/historial/:email', h((req) =>
-  query('SELECT * FROM token_blacklist WHERE email = $1 ORDER BY invalidado_at DESC', [req.params.email])))
-router.get('/blacklist/:id', h((req) => findById('token_blacklist', req.params.id, 'Registro')))
-router.delete('/blacklist/:id', h((req) => remove('token_blacklist', req.params.id, 'Registro')))
-
-// ---- Intentos de login ----
-router.get('/intentos', h(() => query('SELECT * FROM login_attempts ORDER BY id ASC')))
-router.get('/intentos/rango', h((req) => {
-  required(req.query, ['desde', 'hasta'])
-  return query('SELECT * FROM login_attempts WHERE intento_at BETWEEN $1 AND $2 ORDER BY intento_at ASC',
-    [req.query.desde, req.query.hasta])
-}))
-filterRoutes(router, 'login_attempts', {
-  '/intentos/ultimos': { order: 'intento_at DESC, id DESC', limit: 10 },
-  '/intentos/email/:email': { where: 'email = $1', order: 'intento_at DESC' },
-  '/intentos/fallidos/:email': { where: 'email = $1 AND exitoso = FALSE', order: 'id ASC' },
-})
-router.get('/intentos/:id', h((req) => findById('login_attempts', req.params.id, 'Intento')))
-router.delete('/intentos/:id', h((req) => remove('login_attempts', req.params.id, 'Intento')))
+// Historial de intentos de inicio de sesión (tabla LOGIN_ATTEMPT)
+router.get('/intentos', permitir('ADMINISTRADOR', 'AUDITOR'), h(() => query(
+  `SELECT l.ID_INTENTO AS id, l.EXITOSO, l.IP_ADDRESS, l.FECHA_INTENTO, u.EMAIL
+   FROM LOGIN_ATTEMPT l LEFT JOIN USUARIO u ON u.ID_USUARIO = l.ID_USUARIO
+   ORDER BY l.FECHA_INTENTO DESC, l.ID_INTENTO DESC
+   FETCH FIRST 200 ROWS ONLY`)))
 
 export default router

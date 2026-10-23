@@ -3,67 +3,36 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Logo from './Logo'
 import Icon from './Icons'
-import { notificationRecipientService } from '../api/services'
-
-const menuItems = {
-  ADMINISTRADOR: [
-    { label: 'Dashboard', path: '/dashboard', icon: 'Dashboard' },
-    { label: 'Usuarios', path: '/usuarios', icon: 'Users' },
-    { label: 'Vehículos', path: '/vehiculos', icon: 'Car' },
-    { label: 'Ingresos', path: '/ingresos', icon: 'Entry' },
-    { label: 'Cruces', path: '/cruces', icon: 'Exit' },
-    { label: 'Transacciones', path: '/transacciones', icon: 'Dollar' },
-    { label: 'Auditoría', path: '/auditoria', icon: 'Clipboard' },
-    { label: 'Reportes', path: '/reportes', icon: 'Chart' },
-    { label: 'Sanidad', path: '/sanidad', icon: 'Flask' },
-    { label: 'Notificaciones', path: '/notificaciones', icon: 'Bell' },
-  ],
-  FISCALIZADOR: [
-    { label: 'Dashboard', path: '/dashboard', icon: 'Dashboard' },
-    { label: 'Vehículos', path: '/vehiculos', icon: 'Car' },
-    { label: 'Ingresos', path: '/ingresos', icon: 'Entry' },
-    { label: 'Cruces', path: '/cruces', icon: 'Exit' },
-    { label: 'Sanidad', path: '/sanidad', icon: 'Flask' },
-    { label: 'Transacciones', path: '/transacciones', icon: 'Dollar' },
-    { label: 'Notificaciones', path: '/notificaciones', icon: 'Bell' },
-  ],
-  VIAJERO: [
-    { label: 'Dashboard', path: '/dashboard', icon: 'Dashboard' },
-    { label: 'Mis Vehículos', path: '/vehiculos', icon: 'Car' },
-    { label: 'Mis Ingresos', path: '/ingresos', icon: 'Entry' },
-    { label: 'Mis Cruces', path: '/cruces', icon: 'Exit' },
-    { label: 'Transacciones', path: '/transacciones', icon: 'Dollar' },
-  ],
-}
+import api from '../api/axios'
+import { ROLES } from '../lib/roles'
+import { menuItems } from '../lib/menu'
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
-  const [notifCount, setNotifCount] = useState(0)
   const notifRef = useRef(null)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
   const items = menuItems[user?.rol] || menuItems.VIAJERO
+  const notifCount = notifications.length
 
+  // Bandeja personal: NOTIFICACION_DESTINATARIO de la persona conectada
   useEffect(() => {
-    if (!user?.rut) return
     const fetchNotifs = async () => {
       try {
-        const [data, countData] = await Promise.all([
-          notificationRecipientService.getUnreadByRut(user.rut),
-          notificationRecipientService.getUnreadCountByRut(user.rut),
-        ])
+        const { data } = await api.get('/notificaciones/mias', { params: { noLeidas: 1 } })
         setNotifications(Array.isArray(data) ? data : [])
-        setNotifCount(typeof countData === 'number' ? countData : 0)
-      } catch {}
+      } catch {
+        // sin notificaciones
+      }
     }
     fetchNotifs()
-    const interval = setInterval(fetchNotifs, 30000)
+    const interval = setInterval(fetchNotifs, 60000)
     return () => clearInterval(interval)
-  }, [user?.rut])
+  }, [])
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -75,10 +44,11 @@ export default function Layout({ children }) {
 
   const markAsRead = async (id) => {
     try {
-      await notificationRecipientService.markAsRead(id)
-      setNotifications(prev => prev.filter(n => n.id !== id))
-      setNotifCount(prev => Math.max(0, prev - 1))
-    } catch {}
+      await api.patch(`/notificaciones/mias/${id}/leida`)
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+    } catch {
+      // se reintenta en la próxima actualización
+    }
   }
 
   return (
@@ -158,8 +128,8 @@ export default function Layout({ children }) {
                       {notifications.map(n => (
                         <div key={n.id} className="flex items-start gap-2 p-3 border-b border-white/[0.02] hover:bg-white/[0.02] transition-colors">
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-white/70 truncate">{n.notification?.titulo || n.titulo}</p>
-                            <p className="text-[11px] text-white/40 truncate mt-0.5">{n.notification?.mensaje || n.mensaje}</p>
+                            <p className="text-xs font-medium text-white/70 truncate">{n.titulo}</p>
+                            <p className="text-[11px] text-white/40 truncate mt-0.5">{n.mensaje}</p>
                           </div>
                           <button onClick={() => markAsRead(n.id)} className="shrink-0 p-1 rounded hover:bg-white/[0.04] text-white/20 hover:text-[#34d399] transition-colors">
                             <Icon name="Check" className="w-3 h-3" />
@@ -172,8 +142,8 @@ export default function Layout({ children }) {
               )}
             </div>
             <div className="text-right">
-              <p className="text-xs text-white/50">{user?.email}</p>
-              <p className="text-[10px] text-white/20">{user?.rol}</p>
+              <p className="text-xs text-white/50">{user?.nombre || user?.email}</p>
+              <p className="text-[10px] text-white/20">{ROLES[user?.rol]?.label || user?.rol}</p>
             </div>
             <button
               onClick={logout}

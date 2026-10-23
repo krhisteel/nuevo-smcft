@@ -56,6 +56,16 @@ const dotColors = {
   ANULADO: "#6b7280",
   ACTIVO: "#10b981",
   INACTIVO: "#6b7280",
+  VIGENTE: "#10b981",
+  GENERADO: "#10b981",
+  COMPLETADA: "#10b981",
+  REGISTRADA: "#4f8cff",
+  ABIERTA: "#f59e0b",
+  VENCIDO: "#ef4444",
+  VENCIDA: "#ef4444",
+  REVOCADA: "#ef4444",
+  CERRADO: "#6b7280",
+  OBSERVADA: "#f59e0b",
 }
 
 const dotLabels = {
@@ -72,12 +82,21 @@ const dotLabels = {
   ENVIADA: "Enviada",
   ACTIVO: "Activo",
   INACTIVO: "Inactivo",
+  VIGENTE: "Vigente",
+  GENERADO: "Generado",
+  COMPLETADA: "Completada",
+  REGISTRADA: "Registrada",
+  ABIERTA: "Abierta",
+  VENCIDO: "Vencido",
+  VENCIDA: "Vencida",
+  REVOCADA: "Revocada",
+  CERRADO: "Cerrado",
 }
 
 export function StatusDot({ status, className = "" }) {
   const color = dotColors[status] || "#6b7280"
   const label = dotLabels[status] || status
-  const isPendiente = status === "PENDIENTE" || status === "EN_PROCESO" || status === "GENERANDO"
+  const isPendiente = ["PENDIENTE", "EN_PROCESO", "GENERANDO", "ABIERTA"].includes(status)
   return (
     <span className={`inline-flex items-center gap-1.5 ${className}`}>
       <span className="relative inline-flex w-2 h-2">

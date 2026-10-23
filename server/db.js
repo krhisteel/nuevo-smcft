@@ -1,147 +1,127 @@
-// Capa de acceso a datos del monolito.
-// - Con ORACLE_CONNECT_STRING usa Oracle Database (Oracle Cloud). Las tablas
-//   se crean con database/oracle/schema.sql desde SQL Developer.
-// - Con DATABASE_URL usa PostgreSQL.
-// - Sin ninguna de las dos usa PGlite (Postgres embebido) para desarrollo local.
-import { schemaSql } from './schema.js'
-import { seed } from './seed.js'
+// Acceso a la base Oracle (esquema SMCFT en Oracle Cloud).
+// Usa node-oracledb en modo "Thin" (JavaScript puro, sin Instant Client),
+// por lo que funciona en Vercel.
+import oracledb from 'oracledb'
 
-// Marcador para pedir el id generado en un INSERT (solo Oracle)
-export const OUT_ID = Symbol('OUT_ID')
+// Columnas CHAR(1) 'S'/'N' del modelo que se exponen como booleanos
+const BOOLEANAS = new Set(['activo', 'exitoso', 'requiereDeclaracion', 'aprobado', 'enviada', 'leida', 'accesoWeb', 'vencido', 'excedeLimite'])
+// Columnas DATE que representan solo un día
+const SOLO_FECHA = new Set(['fechaNacimiento', 'fechaEmision', 'fechaVencimiento', 'fecha'])
 
-export const dialect = () =>
-  (process.env.ORACLE_CONNECT_STRING ? 'oracle' : process.env.DATABASE_URL ? 'postgres' : 'pglite')
+const pad = (n) => String(n).padStart(2, '0')
+const toCamel = (s) => s.toLowerCase().replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase())
 
-// Los TIMESTAMP se devuelven como "YYYY-MM-DDTHH:mm:ss" (hora local, sin zona),
-// igual que LocalDateTime en la versión Java.
-const parsers = {
-  1114: (v) => (v ? v.replace(' ', 'T').split('.')[0] : v), // timestamp
-  1082: (v) => v, // date
-  1700: (v) => (v === null ? null : parseFloat(v)), // numeric
-  20: (v) => (v === null ? null : parseInt(v, 10)), // int8 (count)
+// Oracle Cloud guarda SYSTIMESTAMP en UTC: las fechas con hora se envían en ISO con "Z"
+// para que el navegador las muestre en la hora local del usuario.
+function formatearFecha(d, soloFecha) {
+  const dia = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  if (soloFecha) return dia
+  return `${dia}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}Z`
 }
 
-let backend = null
-
-async function createBackend() {
-  if (dialect() === 'oracle') {
-    const { createOracleBackend } = await import('./oracle.js')
-    return createOracleBackend(OUT_ID)
-  }
-
-  if (dialect() === 'postgres') {
-    const { default: pg } = await import('pg')
-    for (const [oid, fn] of Object.entries(parsers)) pg.types.setTypeParser(Number(oid), fn)
-    const url = process.env.DATABASE_URL
-    const local = /localhost|127\.0\.0\.1/.test(url) || process.env.PGSSL === 'disable'
-    const pool = new pg.Pool({
-      connectionString: url,
-      ssl: local ? false : { rejectUnauthorized: false },
-      max: Number(process.env.PG_POOL_MAX || 3),
-    })
-    return {
-      query: (sql, params) => pool.query(sql, params),
-      exec: (sql) => pool.query(sql),
-      transaction: async (fn) => {
-        const client = await pool.connect()
-        try {
-          await client.query('BEGIN')
-          const result = await fn((sql, params) => client.query(sql, params))
-          await client.query('COMMIT')
-          return result
-        } catch (err) {
-          await client.query('ROLLBACK')
-          throw err
-        } finally {
-          client.release()
-        }
-      },
-    }
-  }
-
-  const { PGlite } = await import('@electric-sql/pglite')
-  // En Vercel el sistema de archivos es efímero: sin DATABASE_URL se usa memoria.
-  const dataDir = process.env.VERCEL ? undefined : (process.env.PGLITE_DIR || './.data/pglite')
-  if (process.env.VERCEL) {
-    console.warn('[SMCFT] Sin base de datos configurada: usando base en memoria (los datos se pierden).')
-  }
-  if (dataDir && !dataDir.includes('://')) {
-    const fs = await import('node:fs')
-    fs.mkdirSync(dataDir, { recursive: true })
-  }
-  const db = new PGlite(dataDir, { parsers })
-  return {
-    query: (sql, params) => db.query(sql, params),
-    exec: (sql) => db.exec(sql),
-    transaction: (fn) => db.transaction((tx) => fn((sql, params) => tx.query(sql, params))),
-  }
-}
-
-let readyPromise = null
-
-// Crea el esquema y los datos iniciales una sola vez por instancia.
-export function ensureReady() {
-  if (!readyPromise) {
-    readyPromise = (async () => {
-      backend = await createBackend()
-      if (dialect() === 'oracle') {
-        // En Oracle el esquema lo crea el script de SQL Developer
-        await seed(query).catch((err) => {
-          throw new Error(`No se pudo usar la base Oracle (${err.message}). `
-            + '¿Se ejecutó database/oracle/schema.sql?')
-        })
-      } else {
-        await backend.exec(schemaSql)
-        await seed(query)
-      }
-    })().catch((err) => {
-      readyPromise = null
-      throw err
-    })
-  }
-  return readyPromise
-}
-
-const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-
-export function camelize(row) {
-  if (!row) return row
+function normalizarFila(row) {
   const out = {}
-  for (const [k, v] of Object.entries(row)) out[toCamel(k)] = v
+  for (const [k, v] of Object.entries(row)) {
+    const col = toCamel(k)
+    if (v instanceof Date) out[col] = formatearFecha(v, SOLO_FECHA.has(col))
+    else if (BOOLEANAS.has(col) && (v === 'S' || v === 'N')) out[col] = v === 'S'
+    else out[col] = v
+  }
   return out
 }
 
-function wrap(runner) {
-  return async (sql, params = []) => {
-    const res = await runner(sql, params)
-    return res.rows.map(camelize)
+let poolPromise = null
+
+function crearPool() {
+  const faltan = ['ORACLE_USER', 'ORACLE_PASSWORD', 'ORACLE_CONNECT_STRING'].filter((v) => !process.env[v])
+  if (faltan.length) {
+    throw new Error(`Faltan variables de entorno de Oracle: ${faltan.join(', ')}`)
+  }
+  const schema = (process.env.ORACLE_SCHEMA || 'SMCFT').replace(/[^\w$#]/g, '')
+  const config = {
+    user: process.env.ORACLE_USER,
+    password: process.env.ORACLE_PASSWORD,
+    connectString: process.env.ORACLE_CONNECT_STRING,
+    poolMin: 0,
+    poolMax: Number(process.env.ORACLE_POOL_MAX || 4),
+    poolIncrement: 1,
+    // Todas las consultas apuntan al esquema SMCFT aunque se conecte otro usuario
+    sessionCallback: (conn, _tag, done) => {
+      conn.execute(`ALTER SESSION SET CURRENT_SCHEMA = ${schema}`).then(() => done(), done)
+    },
+  }
+  // Wallet de Autonomous Database (solo si la base exige mTLS)
+  if (process.env.ORACLE_WALLET_PEM) {
+    config.walletContent = process.env.ORACLE_WALLET_PEM.replace(/\\n/g, '\n')
+    config.walletPassword = process.env.ORACLE_WALLET_PASSWORD
+  }
+  return oracledb.createPool(config)
+}
+
+function pool() {
+  if (!poolPromise) {
+    poolPromise = Promise.resolve().then(crearPool).catch((err) => {
+      poolPromise = null
+      throw err
+    })
+  }
+  return poolPromise
+}
+
+// Funciones de consulta sobre una conexión. autoCommit=false dentro de transacciones.
+function cliente(conn, autoCommit) {
+  const execute = (sql, binds = {}) =>
+    conn.execute(sql, binds, { autoCommit, outFormat: oracledb.OUT_FORMAT_OBJECT })
+
+  const query = async (sql, binds) => ((await execute(sql, binds)).rows || []).map(normalizarFila)
+
+  return {
+    execute,
+    query,
+    queryOne: async (sql, binds) => (await query(sql, binds))[0] || null,
+
+    // Siguiente id libre. Con secuencia la avanza hasta superar el máximo
+    // (mismo criterio que siguiente_id del script 03_datos_prueba.sql);
+    // las tablas sin secuencia usan MAX + 1.
+    nextId: async (tabla, columna, secuencia) => {
+      const { rows: [[max]] } = await conn.execute(`SELECT NVL(MAX(${columna}), 0) FROM ${tabla}`)
+      if (!secuencia) return max + 1
+      for (let i = 0; i < 1000; i++) {
+        const { rows: [[id]] } = await conn.execute(`SELECT ${secuencia}.NEXTVAL FROM DUAL`)
+        if (id > max) return id
+      }
+      throw new Error(`La secuencia ${secuencia} está muy atrasada respecto de ${tabla}`)
+    },
   }
 }
 
-// Ejecuta una consulta y devuelve las filas con claves camelCase.
-export const query = (sql, params) => wrap(backend.query)(sql, params)
-
-export async function queryOne(sql, params) {
-  const rows = await query(sql, params)
-  return rows[0] || null
+async function conConexion(fn) {
+  const conn = await (await pool()).getConnection()
+  try {
+    return await fn(conn)
+  } finally {
+    await conn.close()
+  }
 }
 
-// Ejecuta fn dentro de una transacción; fn recibe una función q(sql, params).
+// Consultas sueltas (cada una con autocommit)
+export const query = (sql, binds) => conConexion((c) => cliente(c, true).query(sql, binds))
+export const queryOne = (sql, binds) => conConexion((c) => cliente(c, true).queryOne(sql, binds))
+export const execute = (sql, binds) => conConexion((c) => cliente(c, true).execute(sql, binds))
+
+// Ejecuta fn dentro de una transacción. fn recibe { query, queryOne, execute, nextId }.
 export function transaction(fn) {
-  return backend.transaction((runner) => fn(wrap(runner)))
+  return conConexion(async (conn) => {
+    try {
+      const result = await fn(cliente(conn, false))
+      await conn.commit()
+      return result
+    } catch (err) {
+      await conn.rollback()
+      throw err
+    }
+  })
 }
 
-// Hora actual en Chile como "YYYY-MM-DDTHH:mm:ss".
-export function nowLocal(offsetMs = 0) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Santiago',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hourCycle: 'h23',
-    })
-      .formatToParts(new Date(Date.now() + offsetMs))
-      .map((p) => [p.type, p.value]),
-  )
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`
-}
+export const OUT_NUMBER = { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
+export const sn = (v) => (v === true || v === 'S' || v === 'true' ? 'S' : 'N')
