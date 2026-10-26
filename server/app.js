@@ -19,6 +19,7 @@ import plazosRouter from './routes/plazos.js'
 import notificacionesRouter from './routes/notificaciones.js'
 import reportesRouter from './routes/reportes.js'
 import auditoriasRouter from './routes/auditorias.js'
+import triggersRouter from './routes/triggers.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -56,6 +57,7 @@ api.use('/plazos', plazosRouter)
 api.use('/notificaciones', notificacionesRouter)
 api.use('/reportes', reportesRouter)
 api.use('/auditorias', auditoriasRouter)
+api.use('/triggers', triggersRouter)
 
 api.use((req, res) => res.status(404).json({ error: `Ruta no encontrada: ${req.method} ${req.originalUrl}` }))
 

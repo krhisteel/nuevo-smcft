@@ -15,11 +15,12 @@ const M = {
   usuarios: { label: 'Usuarios', path: '/usuarios', icon: 'Lock' },
   pasos: { label: 'Pasos fronterizos', path: '/pasos', icon: 'Flag' },
   categorias: { label: 'Categorías', path: '/categorias', icon: 'Building' },
+  triggers: { label: 'Triggers', path: '/triggers', icon: 'Refresh' },
 }
 
 export const menuItems = {
   ADMINISTRADOR: [M.dashboard, M.cruces, M.personas, M.vehiculos, M.documentos, M.autorizaciones, M.declaraciones,
-    M.sanidad, M.plazos, M.notificaciones, M.reportes, M.auditoria, M.usuarios, M.pasos, M.categorias],
+    M.sanidad, M.plazos, M.notificaciones, M.reportes, M.auditoria, M.usuarios, M.pasos, M.categorias, M.triggers],
   FISCALIZADOR: [M.dashboard, M.cruces, M.personas, M.vehiculos, M.documentos, M.autorizaciones, M.declaraciones,
     M.plazos, M.notificaciones],
   INSPECTOR_SAG: [M.dashboard, M.cruces, M.declaraciones, M.sanidad, M.notificaciones],

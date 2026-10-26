@@ -19,6 +19,7 @@ import AuditoriaPage from './pages/AuditoriaPage'
 import UsuariosPage from './pages/UsuariosPage'
 import PasosPage from './pages/PasosPage'
 import CategoriasPage from './pages/CategoriasPage'
+import TriggersPage from './pages/TriggersPage'
 import { STAFF } from './lib/roles'
 
 const TODOS = [...STAFF, 'VIAJERO']
@@ -40,6 +41,7 @@ const secciones = [
   ['usuarios', UsuariosPage, ['ADMINISTRADOR']],
   ['pasos', PasosPage, ['ADMINISTRADOR']],
   ['categorias', CategoriasPage, ['ADMINISTRADOR']],
+  ['triggers', TriggersPage, ['ADMINISTRADOR']],
 ]
 
 export default function App() {

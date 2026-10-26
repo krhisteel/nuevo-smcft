@@ -45,6 +45,11 @@ Desde la página (Administrador → Usuarios) se pueden crear más usuarios o ca
 | `FN_TOTAL_PLAZOS_VENCIDOS` | Dashboard y Plazos (indicador de vencidos) |
 | `TRG_DOCUMENTO_AUDIT` / `TRG_DOCUMENTO_SENTENCIA` | Al crear/editar/eliminar en *Documentos* → aparece en *Auditoría* |
 
+Además, en **Triggers** (solo Administrador) se puede ver y editar el código de los tres triggers y compilarlo:
+la página ejecuta `CREATE OR REPLACE TRIGGER` en Oracle y muestra los errores de `ALL_ERRORS`. La página no guarda
+copias: el código vigente es siempre el que está en la base (visible también en SQL Developer). Si un trigger queda
+con errores (INVALID), las operaciones sobre su tabla fallan hasta corregirlo.
+
 Los errores de negocio del package (por ejemplo `-20002` menor sin autorización, `-20004` vehículo
 inexistente o `-20020` rango de fechas inválido) se muestran tal cual en la página.
 

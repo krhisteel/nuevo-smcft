@@ -28,6 +28,7 @@ Página web del proyecto SMCFT como **monolito** listo para **Vercel**, conectad
 | Reportes | `REPORTE`, `REPORTE_DETALLE`, `SP_REPORTE_CRUCES` | Admin, Auditor |
 | Auditoría | `AUDITORIA`, `AUDITORIA_DETALLE` | Admin, Auditor |
 | Usuarios, pasos, categorías | `USUARIO`, `USUARIO_ROL`, `ROL`, `FUNCIONARIO`, `PASO_FRONTERIZO`, `CATEGORIA_ITEM` | Admin |
+| Triggers | `ALL_TRIGGERS`, `ALL_SOURCE`, `ALL_ERRORS`: ver, editar y compilar el código PL/SQL de los triggers (el cambio queda en Oracle) | Admin |
 
 Los permisos se validan en la API (no solo en el menú). Cada inicio de sesión queda en `LOGIN_ATTEMPT`.
 
