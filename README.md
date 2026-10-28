@@ -11,9 +11,12 @@ Página web del proyecto SMCFT como **monolito** listo para **Vercel**, conectad
 - **Base de datos:** el esquema `SMCFT` del informe (27 tablas) y sus objetos PL/SQL. La página **usa** el package
   `PKG_GESTION_FRONTERA`, los procedimientos, las funciones y los triggers en lugar de repetir esa lógica.
 
-  - **Aplicación Web:** [https://nuevo-smcft-drab.vercel.app](https://nuevo-smcft-drab.vercel.app)
-- **Diagnóstico (Health Check):** [https://nuevo-smcft-drab.vercel.app/api/v1/health](https://nuevo-smcft-drab.vercel.app/api/v1/health)
+ ## Despliegue en Producción (Vercel & Oracle Cloud)
 
+- **URL de Producción (Principal):** https://nuevo-smcft-benja-d078.vercel.app
+- **Panel de Control (Dashboard):** https://nuevo-smcft-benja-d078.vercel.app/dashboard
+- **Módulo de Triggers:** https://nuevo-smcft-benja-d078.vercel.app/triggers
+- **Health Check API:** https://nuevo-smcft-benja-d078.vercel.app/api/v1/health
 ## Funcionalidades por rol
 
 | Módulo | Tablas / objetos PL/SQL | Roles |
